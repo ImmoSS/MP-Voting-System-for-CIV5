@@ -381,7 +381,7 @@ function OnReadyCheck( bChecked )
 	CheckGameAutoStart();	
 	ShowHideSaveButton();	
 end
-Controls.LocalReadyCheck:RegisterCheckHandler( OnReadyCheck );
+-- Controls.LocalReadyCheck:RegisterCheckHandler( OnReadyCheck );
 
 
 -------------------------------------------------
