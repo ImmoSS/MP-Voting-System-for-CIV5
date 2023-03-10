@@ -5,6 +5,9 @@
 -- and minimize notification clutter
 -- code is common using gk_mode and bnw_mode switches
 -------------------------------------------------
+-- edit: MP voting system for EUI
+-- edit: Diplomacy stack left/right switch option for EUI
+-------------------------------------------------
 include( "EUI_tooltips" )
 
 Events.SequenceGameInitComplete.Add(function()
@@ -93,6 +96,8 @@ local g_tipControls = {}
 TTManager:GetTypeControlTable( "EUI_CivilizationTooltip", g_tipControls )
 local g_minorControlTable = {}
 local g_majorControlTable = {}
+local g_minorControlTableL = {}
+local g_majorControlTableL = {}
 
 local g_activePlayerID = Game.GetActivePlayer()
 local g_activePlayer = Players[ g_activePlayerID ]
@@ -124,6 +129,7 @@ local g_chatPanelHeight = 170
 local g_diploButtonsHeight = 108
 local g_maxTotalStackHeight, g_isShowCivList, g_isUpdateCivList
 local g_civPanelOffsetY = g_diploButtonsHeight
+local g_civPanelLOffsetY = 162
 local g_alertMessages = {}
 local g_alertButton
 
@@ -141,6 +147,7 @@ local g_NotificationButtons = {}
 --[[
 	{ (controls) Button etc..., (bundle) { { Id, type, toolTip, strSummary, iGameValue, iExtraGameData, playerID }, ... } }
 --]]
+
 
 -------------------------------------------------
 -- List of notification types we can handle
@@ -318,6 +325,10 @@ for k, v, w in ([[
 
 	NOTIFICATION_LEAGUE_PROJECT_COMPLETE		LeagueProjectComplete
 	NOTIFICATION_LEAGUE_PROJECT_PROGRESS		LeagueProjectProgress
+	NOTIFICATION_MP_IRR_PROPOSAL		MPVotingSystemProposal
+	NOTIFICATION_MP_CC_PROPOSAL		MPVotingSystemProposal
+	NOTIFICATION_MP_SCRAP_PROPOSAL		MPVotingSystemProposal
+	NOTIFICATION_MP_PROPOSAL_RESULT		MPVotingSystemResult
 ]]):gmatch("(%S+)[^%S\n\r]*(%S*)[^%S\n\r]*(%S*)[^\n\r]*") do
 	local n = NotificationTypes[k]
 	if n then
@@ -332,14 +343,16 @@ end
 -------------------------------------------------
 local function ProcessStackSizes( resetCivPanelElevator )
 
-	local maxTotalStackHeight, smallStackHeight
+	local maxTotalStackHeight, smallStackHeight, maxLTotalStackHeight
 	if g_leaderMode then
 		maxTotalStackHeight = g_screenHeight
+		maxLTotalStackHeight = g_screenHeight
 		smallStackHeight = 0
 	else
 		Controls.BigStack:CalculateSize()
 		Controls_SmallStack:CalculateSize()
 		maxTotalStackHeight = g_maxTotalStackHeight - Controls.BigStack:GetSizeY()
+		maxLTotalStackHeight = g_screenHeight - g_civPanelLOffsetY - 150
 		smallStackHeight = Controls_SmallStack:GetSizeY()
 	end
 
@@ -347,6 +360,9 @@ local function ProcessStackSizes( resetCivPanelElevator )
 		Controls.MinorStack:CalculateSize()
 		Controls.MajorStack:CalculateSize()
 		Controls.CivStack:CalculateSize()
+		Controls.MinorStackL:CalculateSize()
+		Controls.MajorStackL:CalculateSize()
+		Controls.CivStackL:CalculateSize()
 		local halfTotalStackHeight = math_floor(maxTotalStackHeight / 2)
 		local civStackHeight = Controls.CivStack:GetSizeY()
 
@@ -373,7 +389,15 @@ local function ProcessStackSizes( resetCivPanelElevator )
 		else
 			Controls.CivStack:ChangeParent( Controls.CivPanel )
 		end
+		Controls.CivScrollPanelL:SetSizeY( maxLTotalStackHeight )
+		Controls.CivScrollPanelL:CalculateInternalSize()
+		if Controls.CivScrollPanelL:GetRatio() < 1 then
+			Controls.CivScrollPanelL:SetOffsetX(18)
+		else
+			Controls.CivScrollPanelL:SetOffsetX(0)
+		end
 		Controls.CivPanel:ReprocessAnchoring()
+		Controls.CivPanelL:ReprocessAnchoring()
 --		Controls.CivPanel:SetSizeY( civStackHeight )
 	else
 		smallStackHeight = math_min( smallStackHeight, maxTotalStackHeight )
@@ -437,6 +461,33 @@ local function SetupNotification( instance, sequence, Id, type, toolTip, strSumm
 			itemImage = instance.WonderConstructedAlphaAnim
 			smallCivFrame = instance.WonderSmallCivFrame
 
+		elseif type == NotificationTypes.NOTIFICATION_MP_IRR_PROPOSAL
+			or type == NotificationTypes.NOTIFICATION_MP_CC_PROPOSAL
+			or type == NotificationTypes.NOTIFICATION_MP_SCRAP_PROPOSAL
+			then
+			print('irr/cc/scrap notification setup')
+			print('icon hookup for proposal owner:', iGameValue)
+			local playerID = iGameValue
+
+			if type == NotificationTypes.NOTIFICATION_MP_IRR_PROPOSAL then
+				instance.StatusFrame:SetText('[ICON_TEAM_1]')
+			elseif type == NotificationTypes.NOTIFICATION_MP_CC_PROPOSAL then
+				instance.StatusFrame:SetText('[ICON_TROPHY_GOLD]')
+			elseif type == NotificationTypes.NOTIFICATION_MP_SCRAP_PROPOSAL then
+				instance.StatusFrame:SetText('[ICON_FLOWER]')
+			end
+			-- debug only
+			--instance.StatusFrame:SetText(Id .. '|' .. Game.GetProposalIDbyUIid(Id) .. '/' .. Game.GetLastProposalID())
+
+			LuaEvents.OnProposalCreated()
+			return CivIconHookup( playerID, 45, instance.CivIcon, instance.CivIconBG, instance.CivIconShadow, false, true );
+		elseif type == NotificationTypes.NOTIFICATION_MP_PROPOSAL_RESULT then
+			if iExtraGameData == 1 then
+				instance.MPVotingSystemResultCancelImage:SetHide(true)  -- hide cancel frame
+			else
+				instance.MPVotingSystemResultCancelImage:SetHide(false)  -- show cancel frame
+			end
+			--return IconHookup( 57, 64, GameInfo.Policies.POLICY_LEGALISM.IconAtlas, instance.MPVotingSystemProposalResultImage )
 		elseif type == NotificationTypes.NOTIFICATION_PROJECT_COMPLETED then
 			itemInfo = GameInfo.Projects[ iGameValue ]
 			itemImage = instance.ProjectConstructedAlphaAnim
@@ -525,8 +576,12 @@ local function MouseExit()
 end
 
 local function GenericLeftClick( Id )
+	print('genericLClick', Id)
 	local index = g_ActiveNotifications[ Id ]
 	local instance = g_NotificationButtons[ index ]
+	print('index', index)
+	print('instance', instance)
+	print('#instance', #instance)
 	if instance and #instance > 0 then
 		local sequence = instance.Sequence
 		if g_mouseExit then
@@ -536,6 +591,8 @@ local function GenericLeftClick( Id )
 			SetupNotification( instance, sequence )
 		end
 		local data = instance[ sequence ]
+		local data2 = data2
+		print('data[2]', data2)
 		Id = data[1]
 		-- Special kludge to work around DLL's stupid city state popups
 		if data[2] == NotificationTypes.NOTIFICATION_MINOR_QUEST then
@@ -555,6 +612,7 @@ local function GenericLeftClick( Id )
 			end
 		end
 	end
+	print('activating notification Id:', Id)
 	UI.ActivateNotification( Id )
 end
 
@@ -588,9 +646,13 @@ end
 -- Notification Added
 -------------------------------------------------
 Events.NotificationAdded.Add(
-function( Id, type, ... ) -- toolTip, strSummary, iGameValue, iExtraGameData, playerID )
-
+function( Id, type, toolTip, strSummary, iGameValue, iExtraGameData, playerID ) -- toolTip, strSummary, iGameValue, iExtraGameData, playerID )
+	print('------new notification-------')
+	print('UI_id', Id)
+	print('type', type)
+	print('-----------------------------')
 	local name = not g_ActiveNotifications[ Id ] and (g_notificationNames[ type ] or "Generic")
+
 	if name then
 		local button = Controls[ name ]
 		local bundled = button or g_notificationBundled[ type ]
@@ -614,12 +676,14 @@ function( Id, type, ... ) -- toolTip, strSummary, iGameValue, iExtraGameData, pl
 					instance.Container:ChangeParent( Controls_SmallStack )
 					button = instance.Button
 				else
+					print('WARN not instance')
 					instance = {}
 					ContextPtr:BuildInstanceForControl( name, instance, Controls_SmallStack )
 					instance.Name = name
 					button = instance.Button
 					button:RegisterCallback( Mouse.eLClick, GenericLeftClick )
 					button:RegisterCallback( Mouse.eRClick, GenericRightClick )
+
 					button:RegisterCallback( Mouse.eMouseExit, MouseExit )
 					if UI.IsTouchScreenEnabled() then
 						button:RegisterCallback( Mouse.eLDblClick, GenericRightClick )
@@ -631,10 +695,10 @@ function( Id, type, ... ) -- toolTip, strSummary, iGameValue, iExtraGameData, pl
 			button:SetVoid1( Id )
 		end
 		if bundled then
-			table_insert( instance, { Id, type, ... } )
+			table_insert( instance, { Id, type, toolTip, strSummary, iGameValue, iExtraGameData, playerID } )
 			SetupNotification( instance, #instance )
 		else
-			SetupNotification( instance, nil, Id, type, ... )
+			SetupNotification( instance, nil, Id, type, toolTip, strSummary, iGameValue, iExtraGameData, playerID )
 		end
 
 		ProcessStackSizes( true )
@@ -699,7 +763,6 @@ end)
 -------------------------------------------------
 -- Additional notifications
 -------------------------------------------------
---[[
 GameEvents.SetPopulation.Add(
 function( x, y, oldPopulation, newPopulation )
 	local plot = Map_GetPlot( x, y )
@@ -720,7 +783,6 @@ function( x, y, oldPopulation, newPopulation )
 		--print( "Notification sent:", NotificationTypes.NOTIFICATION_CITY_GROWTH, sTip, sTitle, x, y )
 	end
 end)
-]]
 
 GameEvents.CityBoughtPlot.Add(
 function( playerID, cityID, x, y, isWithGold, isWithFaithOrCulture )
@@ -772,6 +834,14 @@ end
 
 local function SortMinorStack( control1, control2 )
 	return SortStack( g_minorControlTable[ control1:GetVoid1() ], g_minorControlTable[ control2:GetVoid1() ] )
+end
+
+local function SortMajorStackL( control1, control2 )
+	return SortStack( g_majorControlTableL[ control1:GetVoid1() ], g_majorControlTableL[ control2:GetVoid1() ] )
+end
+
+local function SortMinorStackL( control1, control2 )
+	return SortStack( g_minorControlTableL[ control1:GetVoid1() ], g_minorControlTableL[ control2:GetVoid1() ] )
 end
 
 -------------------------------------------------
@@ -1200,6 +1270,7 @@ local function UpdateCivListNow()
 
 	for playerID, instance in pairs( g_majorControlTable ) do
 
+		local instanceL = g_majorControlTableL[playerID]
 		local player = Players[playerID]
 		local teamID = player:GetTeam()
 		local team = Teams[ teamID ]
@@ -1213,9 +1284,14 @@ local function UpdateCivListNow()
 				instance.TeamIcon:SetText( "[ICON_TEAM_" .. team:GetID() + 1 .. "]" )
 				instance.TeamIcon:SetHide( false )
 				instance.CivIconBG:SetHide( true )
+				instanceL.TeamIcon:SetText( "[ICON_TEAM_" .. team:GetID() + 1 .. "]" )
+				instanceL.TeamIcon:SetHide( false )
+				instanceL.CivIconBG:SetHide( true )
 			else
 				instance.TeamIcon:SetHide( true )
 				instance.CivIconBG:SetHide( false )
+				instanceL.TeamIcon:SetHide( true )
+				instanceL.CivIconBG:SetHide( false )
 			end
 
 			-- Setup status flags
@@ -1224,40 +1300,58 @@ local function UpdateCivListNow()
 			local isDoF = player:IsDoF( g_activePlayerID )
 			local isActivePlayer = playerID == g_activePlayerID
 			instance.War:SetHide( not isAtWar )
+			instanceL.War:SetHide( not isAtWar )
 			if g_isNetworkMultiPlayer or g_isHotSeatGame then
 				if g_isNetworkMultiPlayer then
 					if Matchmaking.GetHostID() == playerID then
 						instance.Connection:SetTextureOffsetVal(4,68)
+						instanceL.Connection:SetTextureOffsetVal(4,68)
 					elseif Network.IsPlayerHotJoining(playerID) then
 						instance.Connection:SetTextureOffsetVal(4,36)
+						instanceL.Connection:SetTextureOffsetVal(4,36)
 					elseif player:IsConnected() then
 						instance.Connection:SetTextureOffsetVal(4,4)
+						instanceL.Connection:SetTextureOffsetVal(4,4)
 					else
 						instance.Connection:SetTextureOffsetVal(4,100)
+						instanceL.Connection:SetTextureOffsetVal(4,100)
 					end
 				end
 				if UI.ProposedDealExists( playerID, g_activePlayerID ) then
 					--They proposed something to us
 					instance.Diplomacy:SetHide(false)
 					instance.Diplomacy:SetAlpha( 1.0 )
+					instanceL.Diplomacy:SetHide(false)
+					instanceL.Diplomacy:SetAlpha( 1.0 )
 				elseif UI.ProposedDealExists( g_activePlayerID, playerID ) then
 					-- We proposed something to them
 					instance.Diplomacy:SetHide(false)
 					instance.Diplomacy:SetAlpha( 0.5 )
+					instanceL.Diplomacy:SetHide(false)
+					instanceL.Diplomacy:SetAlpha( 0.5 )
 				else
 					instance.Diplomacy:SetHide(true)
+					instanceL.Diplomacy:SetHide(true)
 				end
 			end
 			instance.ActivePlayer:SetHide( not isActivePlayer )
 			instance.ResearchAgreement:SetHide( not team:IsHasResearchAgreement( g_activeTeamID ) )
 			instance.DefenseAgreement:SetHide( not team:IsDefensivePact( g_activeTeamID ) )
 			instance.DeclarationOfFriendship:SetHide( not isDoF )
+			instanceL.ActivePlayer:SetHide( not isActivePlayer )
+			instanceL.ResearchAgreement:SetHide( not team:IsHasResearchAgreement( g_activeTeamID ) )
+			instanceL.DefenseAgreement:SetHide( not team:IsDefensivePact( g_activeTeamID ) )
+			instanceL.DeclarationOfFriendship:SetHide( not isDoF )
 			local isOurBorderOpen = g_activeTeam:IsAllowsOpenBordersToTeam( teamID )
 			local isTheirBorderOpen = team:IsAllowsOpenBordersToTeam( g_activeTeamID )
 			instance.TheirBordersClosed:SetHide( isActivePlayer or isAtWar or isTheirBorderOpen )
 			instance.OurBordersClosed:SetHide( isActivePlayer or isAtWar or isOurBorderOpen )
 			instance.TheirBordersOpen:SetHide( isActivePlayer or not isTheirBorderOpen )
 			instance.OurBordersOpen:SetHide( isActivePlayer or not isOurBorderOpen )
+			instanceL.TheirBordersClosed:SetHide( isActivePlayer or isAtWar or isTheirBorderOpen )
+			instanceL.OurBordersClosed:SetHide( isActivePlayer or isAtWar or isOurBorderOpen )
+			instanceL.TheirBordersOpen:SetHide( isActivePlayer or not isTheirBorderOpen )
+			instanceL.OurBordersOpen:SetHide( isActivePlayer or not isOurBorderOpen )
 
 			local color
 			if isAtWar then
@@ -1270,9 +1364,11 @@ local function UpdateCivListNow()
 				color = g_colorMajorCivApproach[ g_activePlayer:GetApproachTowardsUsGuess( playerID ) ]
 			end
 			instance.Button:SetColor( color )
+			instanceL.Button:SetColor( color )
 
 			-- Set Score
 			instance.Score:SetText( player:GetScore() )
+			instanceL.Score:SetText( player:GetScore() )
 
 			local theirTradeItems, ourTradeItems = {}, {}
 
@@ -1298,6 +1394,7 @@ local function UpdateCivListNow()
 
 			elseif isAtWar then
 				instance.Gold:SetText( "[COLOR_RED]" .. L("TXT_KEY_DIPLO_MAJOR_CIV_DIPLO_STATE_WAR") .. "[/COLOR]" )
+				instanceL.Gold:SetText( "[COLOR_RED]" .. L("TXT_KEY_DIPLO_MAJOR_CIV_DIPLO_STATE_WAR") .. "[/COLOR]" )
 			else
 				-- Gold available
 				local gold = 0
@@ -1305,8 +1402,10 @@ local function UpdateCivListNow()
 				if g_deal:IsPossibleToTradeItem( playerID, g_activePlayerID, TradeableItems.TRADE_ITEM_GOLD, 1 ) then -- includes DoF check
 					gold = player:GetGold()
 					instance.Gold:SetText( "[COLOR_YELLOW]" .. gold .. "[/COLOR]" )	--[ICON_GOLD]
+					instanceL.Gold:SetText( "[COLOR_YELLOW]" .. gold .. "[/COLOR]" )	--[ICON_GOLD]
 				else
 					instance.Gold:SetText()
+					instanceL.Gold:SetText()
 					if not g_deal:IsPossibleToTradeItem( playerID, g_activePlayerID, TradeableItems.TRADE_ITEM_GOLD_PER_TURN, 1 ) then
 						goldRate = 0
 					end
@@ -1359,30 +1458,40 @@ local function UpdateCivListNow()
 				end
 			end
 			instance.TheirTradeItems:SetText( table_concat( theirTradeItems ) )
+			instanceL.TheirTradeItems:SetText( table_concat( theirTradeItems ) )
 			if #ourTradeItems < 4 then
 				instance.OurTradeItems:SetText( table_concat( ourTradeItems ) )
+				instanceL.OurTradeItems:SetText( table_concat( ourTradeItems ) )
 			else
 				ourTradeItems[4] = "..." --"[ICON_PLUS]"
 				instance.OurTradeItems:SetText( table_concat( ourTradeItems, nil, 1, 4 ) )
+				instanceL.OurTradeItems:SetText( table_concat( ourTradeItems, nil, 1, 4 ) )
 			end
 
 			-- disable the button if we have a pending deal with this player
 			instance.Button:SetDisabled( playerID == UI.HasMadeProposal( g_activePlayerID ) )
+			instanceL.Button:SetDisabled( playerID == UI.HasMadeProposal( g_activePlayerID ) )
 
 			instance.Button:SetHide( false )
 			instance[3] = team:GetScore()
 			instance[2] = player:GetScore()
+			instanceL.Button:SetHide( false )
+			instanceL[3] = team:GetScore()
+			instanceL[2] = player:GetScore()
 		else
 			instance.Button:SetHide( true )
+			instanceL.Button:SetHide( true )
 		end
 	end
 	Controls.MajorStack:SortChildren( SortMajorStack )
+	Controls.MajorStackL:SortChildren( SortMajorStack )
 
 	-- Show the CityStates we know
 
 	local capital = g_activePlayer:GetCapitalCity()
 	for minorPlayerID, instance in pairs( g_minorControlTable ) do
 
+		local instanceL = g_minorControlTableL[minorPlayerID]
 		local minorPlayer = Players[ minorPlayerID ]
 
 		if minorPlayer
@@ -1390,9 +1499,11 @@ local function UpdateCivListNow()
 			and g_activeTeam:IsHasMet( minorPlayer:GetTeam() )
 		then
 			instance.Button:SetHide( false )
+			instanceL.Button:SetHide( false )
 
 			-- Update Background
 			UpdateCityStateStatusIconBG( g_activePlayerID, minorPlayerID, instance.Portrait )
+			UpdateCityStateStatusIconBG( g_activePlayerID, minorPlayerID, instanceL.Portrait )
 
 			-- Update Allies
 			local allyID = minorPlayer:GetAlly()
@@ -1400,16 +1511,21 @@ local function UpdateCivListNow()
 
 			if ally then
 				CivIconHookup( g_activeTeam:IsHasMet( ally:GetTeam() ) and allyID or -1, 32, instance.AllyIcon, instance.AllyBG, instance.AllyShadow, false, true )
+				CivIconHookup( g_activeTeam:IsHasMet( ally:GetTeam() ) and allyID or -1, 32, instanceL.AllyIcon, instanceL.AllyBG, instanceL.AllyShadow, false, true )
 				instance.Ally:SetHide(false)
+				instanceL.Ally:SetHide(false)
 			else
 				instance.Ally:SetHide(true)
+				instanceL.Ally:SetHide(true)
 			end
 
 			-- Update Spies
 			instance.Spy:SetHide( not spies[ minorPlayerID ] )
+			instanceL.Spy:SetHide( not spies[ minorPlayerID ] )
 
 			-- Update Quests
 			instance.Quests:SetText( GetActiveQuestText( g_activePlayerID, minorPlayerID ) )
+			instanceL.Quests:SetText( GetActiveQuestText( g_activePlayerID, minorPlayerID ) )
 
 			-- Update Pledge
 			if gk_mode then
@@ -1417,15 +1533,21 @@ local function UpdateCivListNow()
 				local free = pledge and minorPlayer:CanMajorWithdrawProtection( g_activePlayerID )
 				instance.Pledge1:SetHide( not pledge or free )
 				instance.Pledge2:SetHide( not free )
+				instanceL.Pledge1:SetHide( not pledge or free )
+				instanceL.Pledge2:SetHide( not free )
 			end
 			instance[3] = minorPlayer:GetMinorCivFriendshipWithMajor( g_activePlayerID )
+			instanceL[3] = minorPlayer:GetMinorCivFriendshipWithMajor( g_activePlayerID )
 			local minorCapital = minorPlayer:GetCapitalCity()
 			instance[2] = -(capital and minorCapital and Map_PlotDistance( capital:GetX(), capital:GetY(), minorCapital:GetX(), minorCapital:GetY() ) or math_huge)
+			instanceL[2] = -(capital and minorCapital and Map_PlotDistance( capital:GetX(), capital:GetY(), minorCapital:GetX(), minorCapital:GetY() ) or math_huge)
 		else
 			instance.Button:SetHide( true )
+			instanceL.Button:SetHide( true )
 		end
 	end
 	Controls.MinorStack:SortChildren( SortMinorStack )
+	Controls.MinorStackL:SortChildren( SortMinorStack )
 
 	ProcessStackSizes()
 end
@@ -1463,28 +1585,36 @@ end
 -------------------------------------------------
 -- Civ List Init
 -------------------------------------------------
-
+local EUI_options = Modding.OpenUserData( "Enhanced User Interface Options", 1);
+local bAnchorLeft = EUI_options.GetValue('DB_bAnchorLeft') or 0;
 for playerID = 0, GameDefines.MAX_CIV_PLAYERS-1 do
 
 	local player = Players[ playerID ]
 	if player and player:IsEverAlive() then
 		--print( "Setting up civilization ribbon player ID", playerID )
 		local instance = { -playerID, 0, 0, 0 }
+		local instanceL = { -playerID, 0, 0, 0 }
 
 		if player:IsMinorCiv() then
 
 			-- Create instance
 			ContextPtr:BuildInstanceForControl( "CityStateInstance", instance, Controls.MinorStack )
+			ContextPtr:BuildInstanceForControl( "CityStateInstanceL", instanceL, Controls.MinorStackL )
 			g_minorControlTable[playerID] = instance
+			g_minorControlTableL[playerID] = instanceL
 
 			-- Setup icons
 			instance.StatusIcon:SetTexture(GameInfo.MinorCivTraits[GameInfo.MinorCivilizations[player:GetMinorCivType()].MinorCivTrait].TraitIcon)
 			instance.StatusIcon:SetColor( PrimaryColors[playerID] )
+			instanceL.StatusIcon:SetTexture(GameInfo.MinorCivTraits[GameInfo.MinorCivilizations[player:GetMinorCivType()].MinorCivTrait].TraitIcon)
+			instanceL.StatusIcon:SetColor( PrimaryColors[playerID] )
 		else
 
 			-- Create instance
 			ContextPtr:BuildInstanceForControl( "LeaderButtonInstance", instance, Controls.MajorStack )
+			ContextPtr:BuildInstanceForControl( "LeaderButtonInstanceL", instanceL, Controls.MajorStackL )
 			g_majorControlTable[playerID] = instance
+			g_majorControlTableL[playerID] = instanceL
 
 			-- Setup icons
 			local leader = GameInfo.Leaders[player:GetLeaderType()]
@@ -1492,24 +1622,41 @@ for playerID = 0, GameDefines.MAX_CIV_PLAYERS-1 do
 			CivIconHookup( playerID, 32, instance.CivIcon, instance.CivIconBG, instance.CivIconShadow, false, true )
 			instance.Connection:SetHide( not g_isNetworkMultiPlayer )
 			instance.Diplomacy:SetHide( not g_isNetworkMultiPlayer and not g_isHotSeatGame )
+			IconHookup( leader.PortraitIndex, 64, leader.IconAtlas, instanceL.Portrait )
+			CivIconHookup( playerID, 32, instanceL.CivIcon, instanceL.CivIconBG, instanceL.CivIconShadow, false, true )
+			instanceL.Connection:SetHide( not g_isNetworkMultiPlayer )
+			instanceL.Diplomacy:SetHide( not g_isNetworkMultiPlayer and not g_isHotSeatGame )
 		end
 
 		local control
+		local controlL
 		-- Setup Tootips
 		for name, callback in pairs( g_civListInstanceToolTips ) do
 			control = instance[name]
+			controlL = instanceL[name]
 			if control then
 				control:SetToolTipCallback( callback )
 				control:SetToolTipType( "EUI_CivilizationTooltip" )
+			end
+			if controlL then
+				controlL:SetToolTipCallback( callback )
+				controlL:SetToolTipType( "EUI_CivilizationTooltip" )
 			end
 		end
 		-- Setup Callbacks
 		for name, eventCallbacks in pairs( g_civListInstanceCallBacks ) do
 			control = instance[name]
+			controlL = instanceL[name]
 			if control then
 				for event, callback in pairs( eventCallbacks ) do
 					control:SetVoid1( playerID )
 					control:RegisterCallback( event, callback )
+				end
+			end
+			if controlL then
+				for event, callback in pairs( eventCallbacks ) do
+					controlL:SetVoid1( playerID )
+					controlL:RegisterCallback( event, callback )
 				end
 			end
 		end
@@ -1521,15 +1668,29 @@ local function OnChatToggle( isChatOpen )
 	g_maxTotalStackHeight = g_screenHeight - Controls.OuterStack:GetOffsetY() - g_civPanelOffsetY
 	if not g_leaderMode then
 		Controls.CivPanel:SetOffsetY( g_civPanelOffsetY )
+		Controls.CivPanelL:SetOffsetY( g_civPanelLOffsetY )
 		ProcessStackSizes( true )
 	end
 end
 
-local EUI_options = Modding.OpenUserData( "Enhanced User Interface Options", 1);
 
 local function OnOptionsChanged()
 	g_isShowCivList = EUI_options.GetValue( "CivRibbon" ) ~= 0
-	Controls.CivPanel:SetHide( not g_isShowCivList )
+	bAnchorLeft = EUI_options.GetValue('DB_bAnchorLeft') or 0;
+	if g_isShowCivList == true then
+		-- update ribbon anchoring
+		if bAnchorLeft == 0 then
+			Controls.CivPanel:SetHide(false);
+			Controls.CivPanelL:SetHide(true);
+		elseif bAnchorLeft == 1 then
+			Controls.CivPanel:SetHide(true);
+			Controls.CivPanelL:SetHide(false);
+		end
+	else
+		Controls.CivPanel:SetHide(true);
+		Controls.CivPanelL:SetHide(true);
+	end
+
 	UpdateCivList()
 end
 
@@ -1537,16 +1698,20 @@ end
 -------------------------------------------------------------------------------
 local function InputHandler( uiMsg, wParam, lParam )
 	if uiMsg == KeyEvents.KeyDown then
-        	if wParam == Keys["1"] then
+        if wParam == Keys["1"] then
+			bAnchorLeft = EUI_options.GetValue('DB_bAnchorLeft') or 0;
 			g_isShowCivList = not g_isShowCivList
 			EUI_options.SetValue( "CivRibbon", g_isShowCivList )
-			Controls.CivPanel:SetHide( not g_isShowCivList )
+			if bAnchorLeft == 0 then
+				Controls.CivPanel:SetHide( not g_isShowCivList );
+			elseif bAnchorLeft == 1 then
+				Controls.CivPanelL:SetHide( not g_isShowCivList );
+			end
 			UpdateCivList()
-        	end
+        end
 	end
 end
 ContextPtr:SetInputHandler( InputHandler );
-
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
@@ -1659,12 +1824,16 @@ function()
 end )
 local function HighlightAndUpdateCivList( playerID, isActive )
 	local instance = g_majorControlTable[ playerID ]
+	local instanceL = g_majorControlTableL[ playerID ]
 	if instance then
 		instance.Portrait:ChangeParent( isActive and instance.ActiveTurn or instance.NotYourTurn )
+		instanceL.Portrait:ChangeParent( isActive and instanceL.ActiveTurn or instanceL.NotYourTurn )
 	else
 		instance = g_minorControlTable[ playerID ]
+		instanceL = g_minorControlTableL[ playerID ]
 		if instance then
 			instance.Active:SetHide( not isActive )
+			instanceL.Active:SetHide( not isActive )
 		end
 	end
 	return UpdateCivList()
@@ -1687,6 +1856,8 @@ if #g_LeaderPopups > 0 then
 			g_leaderID = false
 			Controls.CivPanel:SetOffsetY( g_civPanelOffsetY )
 			Controls.CivPanel:ChangeParent( ContextPtr )
+			Controls.CivPanelL:SetOffsetY( g_civPanelLOffsetY )
+			Controls.CivPanelL:ChangeParent( ContextPtr )
 		end
 		UpdateCivList()
 	end)
@@ -1701,6 +1872,8 @@ if #g_LeaderPopups > 0 then
 					g_leaderMode = i
 					Controls.CivPanel:ChangeParent( g_LeaderPopups[i] )
 					Controls.CivPanel:SetOffsetY( 0 )
+					Controls.CivPanelL:ChangeParent( g_LeaderPopups[i] )
+					Controls.CivPanelL:SetOffsetY( 0 )
 					UpdateCivList()
 --print("enter leader mode", g_LeaderPopups[i]:GetID() )
 				end
@@ -1717,6 +1890,8 @@ if #g_LeaderPopups > 0 then
 			g_leaderMode = 1
 			Controls.CivPanel:ChangeParent( g_LeaderPopups[1] )
 			Controls.CivPanel:SetOffsetY( 0 )
+			Controls.CivPanelL:ChangeParent( g_LeaderPopups[1] )
+			Controls.CivPanelL:SetOffsetY( 0 )
 			UpdateCivList()
 		end
 --print("enter leader mode", 1 )
