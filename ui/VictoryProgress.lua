@@ -1,9 +1,4 @@
 ----------------------------------------------------------------
--- edit: MP voting system for EUI & vanilla UI
-----------------------------------------------------------------
-local g_NextProposalRequestTurn = -1;
-REQUEST_PROPOSALS_COOLDOWN = 1;
-----------------------------------------------------------------
 ----------------------------------------------------------------
 include( "IconSupport" );
 include( "SupportFunctions"  );
@@ -40,44 +35,6 @@ MAX_CULTURE_ICONS_PER_ROW = 8;
 -- Score Details Variables
 local g_ScoreIM = InstanceManager:new( "ScoreCiv", "Civ", Controls.ScoreStack );
 local g_ScoreList = {};
-
-----------------------------------------------------------------
-----------------------------------------------------------------
-function OnProposeIrr()
-	Controls.MPProposeIrrButton:SetDisabled(true)
-	Controls.MPProposeCCButton:SetDisabled(true)
-	Controls.MPProposeScrapButton:SetDisabled(true)
-	Controls.MPProposeIrrLabel:SetAlpha( 0.5 );
-	Controls.MPProposeCCLabel:SetAlpha( 0.5 );
-	Controls.MPProposeScrapLabel:SetAlpha( 0.5 );
-	g_NextProposalRequestTurn = Game.GetElapsedGameTurns() + REQUEST_PROPOSALS_COOLDOWN;
-	Network.SendGiftUnit(-1, -2);
-end
-Controls.MPProposeIrrButton:RegisterCallback( Mouse.eLClick, OnProposeIrr );
-
-function OnProposeCC()
-	Controls.MPProposeIrrButton:SetDisabled(true)
-	Controls.MPProposeCCButton:SetDisabled(true)
-	Controls.MPProposeScrapButton:SetDisabled(true)
-	Controls.MPProposeIrrLabel:SetAlpha( 0.5 );
-	Controls.MPProposeCCLabel:SetAlpha( 0.5 );
-	Controls.MPProposeScrapLabel:SetAlpha( 0.5 );
-	g_NextProposalRequestTurn = Game.GetElapsedGameTurns() + REQUEST_PROPOSALS_COOLDOWN;
-	LuaEvents.MPProposeCCButtonPress({ Type = 123 });
-end
-Controls.MPProposeCCButton:RegisterCallback( Mouse.eLClick, OnProposeCC );
-
-function OnProposeScrap()
-	Controls.MPProposeIrrButton:SetDisabled(true)
-	Controls.MPProposeCCButton:SetDisabled(true)
-	Controls.MPProposeScrapButton:SetDisabled(true)
-	Controls.MPProposeIrrLabel:SetAlpha( 0.5 );
-	Controls.MPProposeCCLabel:SetAlpha( 0.5 );
-	Controls.MPProposeScrapLabel:SetAlpha( 0.5 );
-	g_NextProposalRequestTurn = Game.GetElapsedGameTurns() + REQUEST_PROPOSALS_COOLDOWN;
-	Network.SendGiftUnit(-1, -4);
-end
-Controls.MPProposeScrapButton:RegisterCallback( Mouse.eLClick, OnProposeScrap );
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -510,7 +467,7 @@ function PopulateSpaceRace()
 					numApollo = numApollo + 1;
 				end
 			end
-			-- Controls.SpaceInfo:LocalizeAndSetText("TXT_KEY_VP_DIPLO_PROJECT_PLAYERS_COMPLETE", numApollo, "TXT_KEY_PROJECT_APOLLO_PROGRAM");
+			Controls.SpaceInfo:LocalizeAndSetText("TXT_KEY_VP_DIPLO_PROJECT_PLAYERS_COMPLETE", numApollo, "TXT_KEY_PROJECT_APOLLO_PROGRAM");
 		end
 		
 		Controls.ScienceVictoryProgress:SetHide(false);
@@ -729,48 +686,7 @@ function SetupScreen()
 	
 	-- Set Player Score
 	PopulateScoreBreakdown();
-	-- Proposal buttons
-	if (Game.GetElapsedGameTurns() >= g_NextProposalRequestTurn) and (Game.IsPlayerHasActiveProposal(Game.GetActivePlayer()) == false) then
-		--print('has active proposal false')
-		if Game.IsAnyActiveProposalType(0) == false then  -- irr
-			--print('any active irr false')
-			Controls.MPProposeIrrButton:SetDisabled(false)
-			Controls.MPProposeIrrLabel:SetAlpha( 1 );
-		else
-			--print('any active irr true')
-			Controls.MPProposeIrrButton:SetDisabled(true)
-			Controls.MPProposeIrrLabel:SetAlpha( 0.5 );
-		end
-
-		if Game.IsAnyActiveProposalType(1) == false then  -- cc
-			--print('any active cc false')
-			Controls.MPProposeCCButton:SetDisabled(false)
-			Controls.MPProposeCCLabel:SetAlpha( 1 );
-		else
-			Controls.MPProposeCCButton:SetDisabled(true)
-			Controls.MPProposeCCLabel:SetAlpha( 0.5 );
-			--print('any active cc true')
-		end
-
-		if Game.IsAnyActiveProposalType(2) == false then  -- scrap
-			--print('any active scrap false')
-			Controls.MPProposeScrapButton:SetDisabled(false)
-			Controls.MPProposeScrapLabel:SetAlpha( 1 );
-		else
-			--print('any active scrap true')
-			Controls.MPProposeScrapButton:SetDisabled(true)
-			Controls.MPProposeScrapLabel:SetAlpha( 0.5 );
-		end
-	else
-		--print('has active proposal true')
-		Controls.MPProposeIrrButton:SetDisabled(true)
-		Controls.MPProposeCCButton:SetDisabled(true)
-		Controls.MPProposeScrapButton:SetDisabled(true)
-		Controls.MPProposeIrrLabel:SetAlpha( 0.5 );
-		Controls.MPProposeCCLabel:SetAlpha( 0.5 );
-		Controls.MPProposeScrapLabel:SetAlpha( 0.5 );
-	end
-
+	
 	-- Populate Victories
 	PopulateDomination();
 	PopulateSpaceRace();
@@ -778,8 +694,6 @@ function SetupScreen()
 	PopulateCultural();
 		
 end
-
-LuaEvents.OnProposalCreated.Add( SetupScreen )
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------

@@ -1,6 +1,4 @@
 -------------------------------------------------
--- edit: MP voting system for EUI & vanilla UI
--------------------------------------------------
 -- Advanced Settings Screen
 -------------------------------------------------
 --[[
@@ -700,7 +698,7 @@ ScreenOptions = {
 							
 							for row in GameInfo.Victories() do
 								PreGame.SetVictory(row.ID, victories[row.Type]);
-							end;
+							end
 							
 							local numPlayers = wb.PlayerCount;
 							if(numPlayers == 0) then
@@ -1212,19 +1210,18 @@ ScreenOptions = {
 		g_VictoryCondtionsManager:ResetInstances();
 	
 		for row in GameInfo.Victories() do
-			if(row.Type ~= "VICTORY_SCRAP") then
-				local victoryCondition = g_VictoryCondtionsManager:GetInstance();
-				
-				local victoryConditionTextButton = victoryCondition.GameOptionRoot:GetTextButton();
-				victoryConditionTextButton:LocalizeAndSetText(row.Description);
-				
-				victoryCondition.GameOptionRoot:SetCheck(PreGame.IsVictory(row.ID));
-				
-				victoryCondition.GameOptionRoot:RegisterCheckHandler( function(bCheck)
+			local victoryCondition = g_VictoryCondtionsManager:GetInstance();
+			
+			local victoryConditionTextButton = victoryCondition.GameOptionRoot:GetTextButton();
+			victoryConditionTextButton:LocalizeAndSetText(row.Description);
+			
+			victoryCondition.GameOptionRoot:SetCheck(PreGame.IsVictory(row.ID));
+			
+			victoryCondition.GameOptionRoot:RegisterCheckHandler( function(bCheck)
 				PreGame.SetVictory(row.ID, bCheck);
-				end);
-			end
+			end);
 		end
+		
 		Controls.VictoryConditionsStack:CalculateSize();
 		Controls.VictoryConditionsStack:ReprocessAnchoring();
 	end,
